@@ -53,6 +53,11 @@ button,input,select,textarea{font:inherit}.app{display:flex;min-height:100vh}.si
 <div class="field"><label>Age</label><select id="age"><option>Child</option><option>Teenager</option><option selected>Young adult</option><option>Adult</option><option>Middle-aged</option><option>Senior</option></select></div>
 </div>
 <div class="field" style="margin-top:14px"><label>Model reference (optional)</label><input id="modelRef" type="file" accept="image/*"></div>
+<div class="grid" style="margin-top:12px">
+<div class="field"><label>Model name</label><input id="modelName" placeholder="e.g. Arman / Sara"></div>
+<div class="field"><label>Model styling</label><select id="modelStyle"><option>Clean catalog styling</option><option>Premium fashion styling</option><option>Casual everyday styling</option><option>Traditional Indian styling</option><option>Sport / active styling</option><option>Custom</option></select></div>
+<div class="field"><label>Consistency</label><select id="consistency"><option>Maximum — same identity every image</option><option>High — minor natural variation</option></select></div>
+</div>
 </section>
 
 <section class="card">
@@ -71,9 +76,14 @@ button,input,select,textarea{font:inherit}.app{display:flex;min-height:100vh}.si
 <span class="chip" data-v="Product in use">Product in use</span>
 </div>
 <div class="grid" style="margin-top:15px">
-<div class="field"><label>Number of images</label><select id="count"><option>5</option><option selected>6</option><option>8</option><option>10</option><option>Custom</option></select></div>
+<div class="field"><label>Number of images</label><select id="count"><option>5</option><option selected>6</option><option>8</option><option>10</option><option>12</option><option>Custom</option></select></div>
 <div class="field hidden" id="customBox"><label>Custom number</label><input id="custom" type="number" min="1" max="12" value="6"></div>
 <div class="field"><label>Background</label><select id="background"><option>Clean white studio</option><option>Light neutral studio</option><option>Premium lifestyle</option><option>Natural outdoor lifestyle</option><option>Custom</option></select></div>
+</div>
+<div id="smartPreset" class="card" style="margin-top:15px;margin-bottom:0;background:#f8fafc">
+<strong>✨ Smart shot recommendation</strong>
+<div id="presetText" style="color:#64748b;font-size:13px;margin-top:6px">Choose a product category to see recommended shots.</div>
+<div id="presetButtons" class="chips" style="margin-top:10px"></div>
 </div>
 <div class="field" style="margin-top:14px"><label>Extra requirements</label><textarea id="extra" placeholder="Exact logo, realistic fabric, no text, premium lighting, show laptop compartment, etc."></textarea></div>
 <div class="actions" style="margin-top:15px"><button class="btn primary" onclick="generatePrompts()">✨ Generate Professional Prompts</button><button class="btn ghost" onclick="saveProject()">Save Project</button><button class="btn outline" onclick="resetAll()">Reset</button></div>
@@ -85,7 +95,8 @@ button,input,select,textarea{font:inherit}.app{display:flex;min-height:100vh}.si
 </section>
 
 <section class="card" id="projects">
-<h3>05 · My Projects</h3>
+<h3>05 · Saved Models & Projects</h3>
+<div id="savedModelBox" style="margin-bottom:15px"></div>
 <div id="projectList" class="stats"></div>
 </section>
 </div>
@@ -99,14 +110,51 @@ $('count').onchange=()=>{$('customBox').classList.toggle('hidden',$('count').val
 $('file').onchange=e=>{let f=e.target.files[0];if(f){$('preview').src=URL.createObjectURL(f);$('preview').style.display='block'}};
 function toast(t){$('toast').textContent=t;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',1800)}
 function shots(){return [...document.querySelectorAll('.chip.on')].map(x=>x.dataset.v)}
+const PRESETS={
+"Fashion":["Main front hero","45-degree front","Back view","Fabric/detail close-up","Male lifestyle","Female lifestyle","Product in use","Premium catalog"],
+"Bag / Backpack":["Main front hero","45-degree front","Right side","Back view","Interior / inside","Zipper & material detail","Male lifestyle","Female lifestyle"],
+"Footwear":["Main front hero","45-degree front","Side profile","Back/heel","Sole detail","On-foot male","On-foot female","Lifestyle"],
+"Jewellery":["Product hero","45-degree macro","Side/detail","Clasp/detail","Female close-up","Male close-up","Lifestyle","Premium catalog"],
+"Beauty / Cosmetics":["Pack front hero","45-degree pack","Back/label","Cap/product detail","Female lifestyle","Male lifestyle","In-use close-up","Premium catalog"],
+"Electronics":["Product hero","45-degree front","Side/ports","Back view","Controls/detail","In-use male","In-use female","Lifestyle"],
+"Home & Furniture":["Front hero","45-degree room view","Side view","Back/detail","Material close-up","Lifestyle room","In-use","Scale reference"],
+"Kitchen":["Product hero","45-degree front","Side","Back/controls","Handle/detail","In-use female","In-use male","Lifestyle"],
+"Kids / Baby":["Product hero","45-degree","Back/side","Fabric/detail","Child model","Parent + child","In-use","Lifestyle"],
+"Sports / Fitness":["Product hero","45-degree","Side/detail","Material detail","Male athlete","Female athlete","In-use","Lifestyle"]
+};
 function modelText(){
-let m=$('mode').value;if(m==='none')return 'Do not include any human, hand or model. The product must be the only hero subject.';
-let names={male:'one consistent male model',female:'one consistent female model',both:'the same consistent male and female models',child:'one consistent child model',family:'the same consistent family',couple:'the same consistent couple',senior:'the same consistent senior model',mixed:'a suitable consistent e-commerce model or models'};
-return `Include ${names[m]}. Appearance: ${$('appearance').value}. Age group: ${$('age').value}. Use the uploaded model reference when provided and keep the model identity consistent across the complete image set.`;
+ let m=$('mode').value;
+ if(m==='none') return 'Do not include any human, hand or model. The product must be the only hero subject.';
+ let names={male:'one consistent male model',female:'one consistent female model',both:'the same consistent male and female models',child:'one consistent child model',family:'the same consistent family',couple:'the same consistent couple',senior:'the same consistent senior model',mixed:'a suitable consistent e-commerce model or models'};
+ let ref=$('modelRef').files.length?' A model reference image is supplied; use it as the identity reference.':'';
+ let nm=$('modelName').value.trim()?` Model identity/name reference: ${$('modelName').value.trim()}.`:'';
+ return `Include ${names[m]}. Appearance: ${$('appearance').value}. Age group: ${$('age').value}. Styling: ${$('modelStyle').value}. Consistency requirement: ${$('consistency').value}.${ref}${nm} Preserve the same face, hairstyle, skin tone, body proportions, age appearance and overall identity across the complete image set.`;
 }
 function categoryHint(){
-let c=$('category').value;let h={Fashion:'show accurate fit, fabric drape and stitching', 'Bag / Backpack':'show straps, pockets, zippers, compartments and realistic carrying scale',Footwear:'show accurate sole, upper, stitching and natural on-foot proportions',Jewellery:'show fine metal/gem details and premium macro clarity','Beauty / Cosmetics':'show packaging, label placement, finish and realistic scale',Electronics:'show ports, buttons, screen/body details and correct proportions','Home & Furniture':'show realistic scale, materials and room context',Kitchen:'show functional details, handles, controls and realistic scale','Kids / Baby':'use safe, age-appropriate styling and realistic proportions'};return h[c]||'show all important product features clearly';
+ let c=$('category').value;
+ let h={
+ Fashion:'accurate fit, fabric drape, stitching and garment construction',
+ 'Bag / Backpack':'straps, pockets, zippers, compartments, lining and realistic carrying scale',
+ Footwear:'sole, outsole pattern, upper, stitching and realistic on-foot proportions',
+ Jewellery:'fine metal, stone/gem details, clasp, reflections and premium macro clarity',
+ 'Beauty / Cosmetics':'packaging, label placement, cap, finish, liquid/product texture and realistic scale',
+ Electronics:'ports, buttons, screens, controls, edges and exact body proportions',
+ 'Home & Furniture':'realistic scale, upholstery/material texture, construction and room context',
+ Kitchen:'functional parts, handles, controls, materials and realistic scale',
+ 'Kids / Baby':'safe age-appropriate styling, realistic child proportions and soft natural lighting',
+ 'Sports / Fitness':'ergonomic shape, grips, straps, materials and realistic in-use proportions'
+ };
+ return h[c]||'all important product features, construction and realistic scale';
 }
+function updatePreset(){
+ let c=$('category').value, arr=PRESETS[c]||['Main front hero','45-degree front','Right side','Back view','Close-up detail','Lifestyle','Product in use','Premium catalog'];
+ $('presetText').textContent=`Recommended for ${c}: ${arr.slice(0,6).join(' • ')}`;
+ $('presetButtons').innerHTML=arr.map(x=>`<span class="chip" data-preset="${esc(x)}">${x}</span>`).join('');
+ document.querySelectorAll('[data-preset]').forEach(x=>x.onclick=()=>{let target=[...document.querySelectorAll('.chip')].find(c=>c.dataset.v===x.dataset.preset);if(target)target.classList.add('on');});
+}
+$('category').addEventListener('change',updatePreset);
+updatePreset();
+
 function build(i,shot){
 let p=$('product').value.trim()||'the uploaded product';
 return `Create image ${i+1} of a professional e-commerce image set for ${p} (${ $('category').value }). Shot: ${shot}.
@@ -137,11 +185,25 @@ function esc(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt
 async function copyOne(i){await navigator.clipboard.writeText(prompts[i].text);toast('Prompt copied')}
 async function copyAll(){if(!prompts.length){toast('Generate prompts first');return}await navigator.clipboard.writeText(prompts.map(x=>x.text).join('\\n\\n========== NEXT IMAGE =========='));toast('All prompts copied')}
 function saveProject(){
-let projects=JSON.parse(localStorage.getItem('eps_projects')||'[]');projects.unshift({name:$('product').value||'Untitled Product',count:prompts.length,date:new Date().toLocaleString()});localStorage.setItem('eps_projects',JSON.stringify(projects.slice(0,20)));renderProjects();toast('Project saved on this device')}
-function renderProjects(){let p=JSON.parse(localStorage.getItem('eps_projects')||'[]');$('projectList').innerHTML=p.length?p.map(x=>`<div class="stat"><b>${esc(x.name)}</b><span>${x.count} prompts<br><small>${x.date}</small></span></div>`).join(''):'<div class="empty">No saved projects yet.</div>'}
+ let projects=JSON.parse(localStorage.getItem('eps_projects')||'[]');
+ projects.unshift({name:$('product').value||'Untitled Product',category:$('category').value,count:prompts.length,model:$('mode').value,appearance:$('appearance').value,date:new Date().toLocaleString()});
+ localStorage.setItem('eps_projects',JSON.stringify(projects.slice(0,20)));
+ if($('modelName').value.trim()) saveModel();
+ renderProjects(); toast('Project and model saved on this device');
+}
+function saveModel(){
+ let models=JSON.parse(localStorage.getItem('eps_models')||'[]');
+ models.unshift({name:$('modelName').value.trim(),mode:$('mode').value,appearance:$('appearance').value,age:$('age').value,style:$('modelStyle').value,date:new Date().toLocaleString()});
+ localStorage.setItem('eps_models',JSON.stringify(models.slice(0,20))); renderModels();
+}
+function renderModels(){
+ let m=JSON.parse(localStorage.getItem('eps_models')||'[]');
+ $('savedModelBox').innerHTML=m.length?'<div class="chips">'+m.map(x=>`<span class="chip on">👤 ${esc(x.name)} · ${esc(x.appearance)} · ${esc(x.age)}</span>`).join('')+'</div>':'<div class="muted">No saved model profiles yet. Enter a model name and save a project.</div>';
+}
+function renderProjects(){let p=JSON.parse(localStorage.getItem('eps_projects')||'[]');$('projectList').innerHTML=p.length?p.map(x=>`<div class="stat"><b>${esc(x.name)}</b><span>${x.count} prompts · ${esc(x.category||'General')}<br><small>Model: ${esc(x.model||'none')} · ${x.date}</small></span></div>`).join(''):'<div class="empty">No saved projects yet.</div>'}
 function resetAll(){if(confirm('Reset this project?'))location.reload()}
 function scrollToId(id){$(id).scrollIntoView({behavior:'smooth'})}
-renderProjects();
+renderProjects(); renderModels();
 </script>
 </body>
 </html>
