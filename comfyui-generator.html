@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-Commerce Prompt Studio • ComfyUI</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f7fb;color:#111827;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1000px;margin:auto;padding:16px}
+.hero{background:linear-gradient(135deg,#111827,#312e81);color:#fff;padding:22px;border-radius:18px;margin-bottom:15px}
+.hero h1{margin:0 0 6px;font-size:24px}.hero p{margin:0;color:#cbd5e1}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:15px;padding:17px;margin-bottom:14px;box-shadow:0 6px 24px #0f172a0b}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}
+input,textarea,select{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;color:#111827}
+textarea{min-height:130px;resize:vertical}
+.btn{border:0;border-radius:10px;padding:11px 15px;font-weight:800;cursor:pointer}
+.primary{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff}
+.ghost{background:#eef2f7;color:#111827}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.status{padding:12px;border-radius:10px;background:#f8fafc;color:#475569;font-size:13px;white-space:pre-wrap}
+.ok{background:#ecfdf5;color:#047857}.bad{background:#fef2f2;color:#b91c1c}
+.result{width:100%;max-width:700px;border-radius:14px;display:block;margin-top:12px;border:1px solid #e2e8f0}
+.note{font-size:12px;color:#64748b;line-height:1.5}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.wrap{padding:12px}.hero h1{font-size:21px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+<h1>🛍️ E-Commerce Prompt Studio</h1>
+<p>Product prompt → ComfyUI API → generated e-commerce image</p>
+</div>
+
+<section class="card">
+<h3>1. ComfyUI Connection</h3>
+<label>Current Cloudflare ComfyUI URL</label>
+<input id="base" placeholder="https://xxxxx.trycloudflare.com">
+<div class="row" style="margin-top:10px">
+<button class="btn primary" id="test">Test Connection</button>
+<span class="note">Paste the current URL shown in your ComfyUI browser. If Cloudflare reconnects and the URL changes, update it here.</span>
+</div>
+<div id="status" class="status" style="margin-top:10px">Not tested.</div>
+</section>
+
+<section class="card">
+<h3>2. E-Commerce Prompt</h3>
+<div class="grid">
+<div>
+<label>Product name</label>
+<input id="product" value="6 piece hankey" placeholder="e.g. Hair clip">
+</div>
+<div>
+<label>Shot</label>
+<select id="shot">
+<option>45-degree front</option>
+<option>Main front hero</option>
+<option>Right side</option>
+<option>Back view</option>
+<option>Close-up material detail</option>
+<option>Product in use</option>
+<option>Lifestyle model</option>
+<option>Premium catalog</option>
+</select>
+</div>
+</div>
+
+<label style="margin-top:12px">Positive prompt</label>
+<textarea id="prompt">A professional e-commerce product photograph of 6 piece hankey, 45-degree front view, clean premium studio setup, realistic materials and texture, accurate product identity, natural soft lighting, sharp focus, commercial catalog photography, high quality, centered composition.</textarea>
+
+<label style="margin-top:12px">Negative prompt</label>
+<textarea id="negative">low quality, bad anatomy, extra digits, missing digits, extra limbs, missing limbs, distorted product, duplicate product, text, watermark, logo distortion, blurry, low resolution</textarea>
+
+<div class="row" style="margin-top:12px">
+<button class="btn primary" id="generate">✨ Generate Image</button>
+<button class="btn ghost" id="copy">📋 Copy Prompt</button>
+</div>
+</section>
+
+<section class="card">
+<h3>3. Output</h3>
+<div id="out" class="status">No generation yet.</div>
+<img id="image" class="result" hidden>
+</section>
+
+<section class="card">
+<h3>Workflow</h3>
+<div class="note">
+This page uses the uploaded API workflow: Z-Image Turbo INT8, Qwen 3 4B FP8 mixed CLIP, AE VAE, 1024×1024 latent, 8 steps, res_multistep/simple sampling. Positive prompt is Node 67 and negative prompt is Node 71.
+</div>
+</section>
+
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let promptId=null,poll=null;
+
+function url(){
+  return $('base').value.trim().replace(/\/$/,'');
+}
+
+function msg(text,good=true){
+  $('status').textContent=text;
+  $('status').className='status '+(good?'ok':'bad');
+}
+
+async function test(){
+  if(!url()) return msg('पहले ComfyUI URL डालो.',false);
+  try{
+    const r=await fetch(url()+'/system_stats');
+    if(!r.ok) throw Error('HTTP '+r.status);
+    await r.json();
+    msg('✅ ComfyUI connected.');
+  }catch(e){
+    msg('❌ Connection failed.\n'+e.message+'\n\nCheck that the Cloudflare URL is current and ComfyUI is reachable.',false);
+  }
+}
+
+function workflow(){
+  return {
+    "9":{
+      "inputs":{"filename_prefix":"ComfyUI","images":["65",0]},
+      "class_type":"SaveImage"
+    },
+    "62":{
+      "inputs":{
+        "clip_name":"qwen_3_4b_fp8_mixed.safetensors",
+        "type":"lumina2",
+        "device":"default"
+      },
+      "class_type":"CLIPLoader"
+    },
+    "63":{
+      "inputs":{"vae_name":"ae.safetensors"},
+      "class_type":"VAELoader"
+    },
+    "65":{
+      "inputs":{"samples":["70",0],"vae":["63",0]},
+      "class_type":"VAEDecode"
+    },
+    "66":{
+      "inputs":{
+        "unet_name":"z_image_turbo_int8_convrot.safetensors",
+        "weight_dtype":"default"
+      },
+      "class_type":"UNETLoader"
+    },
+    "67":{
+      "inputs":{
+        "text":$('prompt').value,
+        "clip":["62",0]
+      },
+      "class_type":"CLIPTextEncode"
+    },
+    "68":{
+      "inputs":{"width":1024,"height":1024,"batch_size":1},
+      "class_type":"EmptySD3LatentImage"
+    },
+    "69":{
+      "inputs":{"shift":3,"model":["66",0]},
+      "class_type":"ModelSamplingAuraFlow"
+    },
+    "70":{
+      "inputs":{
+        "seed":Math.floor(Math.random()*4294967295),
+        "steps":8,
+        "cfg":1,
+        "sampler_name":"res_multistep",
+        "scheduler":"simple",
+        "denoise":1,
+        "model":["69",0],
+        "positive":["67",0],
+        "negative":["71",0],
+        "latent_image":["68",0]
+      },
+      "class_type":"KSampler"
+    },
+    "71":{
+      "inputs":{
+        "text":$('negative').value,
+        "clip":["62",0]
+      },
+      "class_type":"CLIPTextEncode"
+    }
+  };
+}
+
+async function generate(){
+  if(!url()) return msg('पहले ComfyUI URL डालो.',false);
+
+  $('out').textContent='⏳ Sending workflow to ComfyUI...';
+  $('image').hidden=true;
+
+  try{
+    const clientId=crypto.randomUUID();
+    const r=await fetch(url()+'/prompt',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        prompt:workflow(),
+        client_id:clientId
+      })
+    });
+
+    const j=await r.json();
+    if(!r.ok || j.error) throw Error(JSON.stringify(j));
+
+    promptId=j.prompt_id;
+    $('out').textContent='✅ Queue में चला गया. Generating...';
+
+    if(poll) clearInterval(poll);
+    poll=setInterval(check,1500);
+  }catch(e){
+    $('out').textContent='❌ Generation failed.\n'+e.message;
+  }
+}
+
+async function check(){
+  if(!promptId) return;
+
+  try{
+    const r=await fetch(url()+'/history/'+promptId);
+    if(!r.ok) return;
+
+    const h=await r.json();
+    const item=h[promptId];
+
+    if(!item || !item.outputs) return;
+
+    clearInterval(poll);
+    poll=null;
+
+    const files=[];
+    for(const node of Object.values(item.outputs)){
+      if(node.images) files.push(...node.images);
+    }
+
+    if(!files.length){
+      $('out').textContent='Generation finished, but no image output was returned.';
+      return;
+    }
+
+    const f=files[0];
+    const src=url()+'/view?filename='+encodeURIComponent(f.filename)
+      +'&subfolder='+encodeURIComponent(f.subfolder||'')
+      +'&type='+encodeURIComponent(f.type||'output');
+
+    $('image').src=src;
+    $('image').hidden=false;
+    $('out').textContent='🎉 Image generated successfully.';
+  }catch(e){
+    console.log(e);
+  }
+}
+
+$('test').onclick=test;
+$('generate').onclick=generate;
+
+$('copy').onclick=async()=>{
+  await navigator.clipboard.writeText($('prompt').value);
+  $('out').textContent='📋 Prompt copied.';
+};
+
+$('product').oninput=()=>{
+  const p=$('product').value.trim();
+  const shot=$('shot').value;
+  if(p){
+    $('prompt').value=
+      'A professional e-commerce product photograph of '+p+
+      ', '+shot+
+      ' view, clean premium studio setup, realistic materials and texture, accurate product identity, natural soft lighting, sharp focus, commercial catalog photography, high quality, centered composition.';
+  }
+};
+
+$('shot').onchange=()=>{
+  const p=$('product').value.trim() || 'the product';
+  const shot=$('shot').value;
+  $('prompt').value=
+    'A professional e-commerce product photograph of '+p+
+    ', '+shot+
+    ' view, clean premium studio setup, realistic materials and texture, accurate product identity, natural soft lighting, sharp focus, commercial catalog photography, high quality, centered composition.';
+};
+</script>
+</body>
+</html>
